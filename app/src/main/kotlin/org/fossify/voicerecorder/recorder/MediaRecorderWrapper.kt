@@ -26,6 +26,9 @@ class MediaRecorderWrapper(val context: Context) : Recorder {
         recorder.setOutputFile(pFD.fileDescriptor)
     }
 
+    // MediaRecorder gives no access to the samples; only used as a fallback when PcmEncoderRecorder fails
+    override fun setGainDb(gainDb: Float) {}
+
     override fun prepare() {
         recorder.prepare()
     }

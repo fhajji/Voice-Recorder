@@ -8,6 +8,7 @@ import org.fossify.voicerecorder.R
 import org.fossify.voicerecorder.activities.SimpleActivity
 import org.fossify.voicerecorder.fragments.MyViewPagerFragment
 import org.fossify.voicerecorder.fragments.PlayerFragment
+import org.fossify.voicerecorder.fragments.RecorderFragment
 import org.fossify.voicerecorder.fragments.TrashFragment
 
 class ViewPagerAdapter(
@@ -16,6 +17,8 @@ class ViewPagerAdapter(
 ) : PagerAdapter() {
 
     private val fragments = SparseArray<MyViewPagerFragment>()
+    private var isResumed = false
+    private var selectedPosition = 0
 
     override fun instantiateItem(container: ViewGroup, position: Int): Any {
         val layout = when (position) {
@@ -29,6 +32,9 @@ class ViewPagerAdapter(
         container.addView(view)
 
         fragments.put(position, view as MyViewPagerFragment)
+        if (position == 0) {
+            updateRecorderPreview()
+        }
         return view
     }
 
@@ -44,6 +50,22 @@ class ViewPagerAdapter(
         for (i in 0 until fragments.size()) {
             fragments[i].onResume()
         }
+        isResumed = true
+        updateRecorderPreview()
+    }
+
+    fun onPause() {
+        isResumed = false
+        updateRecorderPreview()
+    }
+
+    fun onPageSelected(position: Int) {
+        selectedPosition = position
+        updateRecorderPreview()
+    }
+
+    private fun updateRecorderPreview() {
+        (fragments[0] as? RecorderFragment)?.setPreviewEnabled(isResumed && selectedPosition == 0)
     }
 
     fun onDestroy() {

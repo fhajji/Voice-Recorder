@@ -11,6 +11,7 @@ const val GET_RECORDER_INFO = PATH + "GET_RECORDER_INFO"
 const val STOP_AMPLITUDE_UPDATE = PATH + "STOP_AMPLITUDE_UPDATE"
 const val TOGGLE_PAUSE = PATH + "TOGGLE_PAUSE"
 const val CANCEL_RECORDING = PATH + "CANCEL_RECORDING"
+const val UPDATE_GAIN = PATH + "UPDATE_GAIN"
 
 const val EXTENSION_M4A = 0
 const val EXTENSION_MP3 = 1
@@ -103,6 +104,9 @@ const val LAST_RECYCLE_BIN_CHECK = "last_recycle_bin_check"
 const val KEEP_SCREEN_ON = "keep_screen_on"
 const val WAS_MIC_MODE_WARNING_SHOWN = "was_mic_mode_warning_shown"
 const val FILENAME_PATTERN = "filename_pattern"
+const val RECORDING_GAIN = "recording_gain"
+
+const val MAX_RECORDING_GAIN_DB = 24
 
 const val DEFAULT_RECORDINGS_FOLDER = "Recordings"
 const val DEFAULT_FILENAME_PATTERN = "%Y%M%D_%h%m%s"

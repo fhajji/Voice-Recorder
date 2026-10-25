@@ -40,12 +40,15 @@ import org.fossify.voicerecorder.helpers.RECORDING_RUNNING
 import org.fossify.voicerecorder.helpers.RECORDING_STOPPED
 import org.fossify.voicerecorder.helpers.STOP_AMPLITUDE_UPDATE
 import org.fossify.voicerecorder.helpers.TOGGLE_PAUSE
+import org.fossify.voicerecorder.helpers.UPDATE_GAIN
 import org.fossify.voicerecorder.models.Events
 import org.fossify.voicerecorder.recorder.MediaRecorderWrapper
 import org.fossify.voicerecorder.recorder.Mp3Recorder
+import org.fossify.voicerecorder.recorder.PcmEncoderRecorder
 import org.fossify.voicerecorder.recorder.Recorder
 import org.greenrobot.eventbus.EventBus
 import java.io.File
+import java.io.IOException
 import java.util.Timer
 import java.util.TimerTask
 
@@ -76,6 +79,7 @@ class RecorderService : Service() {
             STOP_AMPLITUDE_UPDATE -> amplitudeTimer.cancel()
             TOGGLE_PAUSE -> togglePause()
             CANCEL_RECORDING -> cancelRecording()
+            UPDATE_GAIN -> recorder?.setGainDb(config.recordingGain.toFloat())
             else -> startRecording()
         }
 
@@ -111,8 +115,9 @@ class RecorderService : Service() {
             recorder = if (recordMp3()) {
                 Mp3Recorder(this)
             } else {
-                MediaRecorderWrapper(this)
+                createEncoderRecorder()
             }
+            recorder?.setGainDb(config.recordingGain.toFloat())
 
             if (isRPlus()) {
                 val fileUri = createDocumentUriUsingFirstParentTreeUri(recordingPath)
@@ -324,6 +329,22 @@ class RecorderService : Service() {
 
     private fun broadcastStatus() {
         EventBus.getDefault().post(Events.RecordingStatus(status))
+    }
+
+    // MediaRecorder can't apply gain, so it is only used if the device has no usable encoder
+    private fun createEncoderRecorder(): Recorder {
+        return try {
+            PcmEncoderRecorder(this)
+        } catch (e: IOException) {
+            e.printStackTrace()
+            MediaRecorderWrapper(this)
+        } catch (e: IllegalArgumentException) {
+            e.printStackTrace()
+            MediaRecorderWrapper(this)
+        } catch (e: IllegalStateException) {
+            e.printStackTrace()
+            MediaRecorderWrapper(this)
+        }
     }
 
     private fun recordMp3(): Boolean {

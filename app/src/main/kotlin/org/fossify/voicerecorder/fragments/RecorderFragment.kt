@@ -1,12 +1,16 @@
 package org.fossify.voicerecorder.fragments
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
+import android.widget.SeekBar
+import androidx.core.content.ContextCompat
 import org.fossify.commons.activities.BaseSimpleActivity
 import org.fossify.commons.compose.extensions.getActivity
 import org.fossify.commons.dialogs.ConfirmationDialog
@@ -28,11 +32,14 @@ import org.fossify.voicerecorder.extensions.ensureStoragePermission
 import org.fossify.voicerecorder.extensions.setKeepScreenAwake
 import org.fossify.voicerecorder.helpers.CANCEL_RECORDING
 import org.fossify.voicerecorder.helpers.GET_RECORDER_INFO
+import org.fossify.voicerecorder.helpers.MAX_RECORDING_GAIN_DB
 import org.fossify.voicerecorder.helpers.RECORDING_PAUSED
 import org.fossify.voicerecorder.helpers.RECORDING_RUNNING
 import org.fossify.voicerecorder.helpers.RECORDING_STOPPED
 import org.fossify.voicerecorder.helpers.TOGGLE_PAUSE
+import org.fossify.voicerecorder.helpers.UPDATE_GAIN
 import org.fossify.voicerecorder.models.Events
+import org.fossify.voicerecorder.recorder.LevelMonitor
 import org.fossify.voicerecorder.services.RecorderService
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
@@ -48,6 +55,8 @@ class RecorderFragment(
     private var status = RECORDING_STOPPED
     private var pauseBlinkTimer = Timer()
     private var bus: EventBus? = null
+    private var isPreviewEnabled = false
+    private var levelMonitor: LevelMonitor? = null
     private lateinit var binding: FragmentRecorderBinding
 
     override fun onFinishInflate() {
@@ -67,6 +76,13 @@ class RecorderFragment(
     override fun onDestroy() {
         bus?.unregister(this)
         pauseBlinkTimer.cancel()
+        stopPreview()
+    }
+
+    /** Called by the pager adapter: the preview meter only runs while this page is shown and the app is resumed */
+    fun setPreviewEnabled(enabled: Boolean) {
+        isPreviewEnabled = enabled
+        refreshPreview()
     }
 
     override fun onAttachedToWindow() {
@@ -76,6 +92,7 @@ class RecorderFragment(
         bus = EventBus.getDefault()
         bus!!.register(this)
 
+        setupGainControls()
         updateRecordingDuration(0)
         binding.toggleRecordingButton.setDebouncedClickListener {
             val activity = context as? BaseSimpleActivity
@@ -123,6 +140,90 @@ class RecorderFragment(
         binding.saveRecordingButton.applyColorFilter(properTextColor)
         binding.recorderVisualizer.chunkColor = properPrimaryColor
         binding.recordingDuration.setTextColor(properTextColor)
+        binding.gainLabel.setTextColor(properTextColor)
+        binding.gainValue.setTextColor(properTextColor)
+        binding.gainSeekbar.setColors(properTextColor, properPrimaryColor, properPrimaryColor)
+        binding.levelMeter.setColors(properTextColor, properPrimaryColor)
+    }
+
+    private fun setupGainControls() {
+        val gain = context.config.recordingGain
+        binding.gainSeekbar.max = MAX_RECORDING_GAIN_DB
+        binding.gainSeekbar.progress = gain
+        updateGainValue(gain)
+        binding.gainSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    onGainChanged(progress)
+                }
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar) {}
+
+            override fun onStopTrackingTouch(seekBar: SeekBar) {}
+        })
+    }
+
+    private fun onGainChanged(gainDb: Int) {
+        context.config.recordingGain = gainDb
+        updateGainValue(gainDb)
+        levelMonitor?.setGainDb(gainDb.toFloat())
+        if (status != RECORDING_STOPPED) {
+            Intent(context, RecorderService::class.java).apply {
+                action = UPDATE_GAIN
+                context.startService(this)
+            }
+        }
+    }
+
+    private fun updateGainValue(gainDb: Int) {
+        binding.gainValue.text = context.getString(R.string.gain_value, gainDb)
+    }
+
+    private fun hasRecordAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun refreshPreview() {
+        val shouldRun = isPreviewEnabled && status == RECORDING_STOPPED && !RecorderService.isRunning &&
+            hasRecordAudioPermission()
+        if (!shouldRun) {
+            stopPreview()
+        } else if (levelMonitor == null) {
+            startPreview()
+        }
+    }
+
+    private fun startPreview() {
+        val config = context.config
+        try {
+            levelMonitor = LevelMonitor(context, ::onPreviewLevel)
+            levelMonitor?.setGainDb(config.recordingGain.toFloat())
+            levelMonitor?.start()
+        } catch (e: IllegalStateException) {
+            e.printStackTrace()
+            stopPreview()
+        } catch (e: IllegalArgumentException) {
+            e.printStackTrace()
+            stopPreview()
+        } catch (e: UnsupportedOperationException) {
+            e.printStackTrace()
+            stopPreview()
+        }
+    }
+
+    private fun stopPreview() {
+        levelMonitor?.stop()
+        levelMonitor = null
+        if (::binding.isInitialized) {
+            binding.levelMeter.reset()
+        }
+    }
+
+    private fun onPreviewLevel(amplitude: Int) {
+        binding.levelMeter.setAmplitude(amplitude)
     }
 
     private fun updateRecordingDuration(duration: Int) {
@@ -162,6 +263,8 @@ class RecorderFragment(
     }
 
     private fun startRecording() {
+        // release the microphone, the service opens its own
+        stopPreview()
         Intent(context, RecorderService::class.java).apply {
             context.startService(this)
         }
@@ -246,12 +349,18 @@ class RecorderFragment(
     fun gotStatusEvent(event: Events.RecordingStatus) {
         status = event.status
         refreshView()
+        // posted, so that the service has released the microphone first
+        post { refreshPreview() }
     }
 
     @Suppress("unused")
     @Subscribe(threadMode = ThreadMode.MAIN)
     fun gotAmplitudeEvent(event: Events.RecordingAmplitude) {
         val amplitude = event.amplitude
+        if (status != RECORDING_STOPPED) {
+            binding.levelMeter.setAmplitude(amplitude)
+        }
+
         if (status == RECORDING_RUNNING) {
             binding.recorderVisualizer.update(amplitude)
         }
