@@ -5,7 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Added Bluetooth audio recording support
+
 ### Changed
+- Improved Android 12+ compatibility
 - Recordings are saved to the device when the USB drive or SD card with the recordings folder is not available
 - The recordings folder setting now shows which USB drive or SD card the folder is on
 
