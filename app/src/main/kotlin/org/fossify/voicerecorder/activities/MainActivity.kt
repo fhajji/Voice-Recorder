@@ -85,9 +85,12 @@ class MainActivity : SimpleActivity() {
         super.onResume()
         updateMenuColors()
         if (getPagerAdapter()?.showRecycleBin != config.useRecycleBin) {
+            // stops the old recorder page's level preview before it is replaced
+            getPagerAdapter()?.onPause()
             setupViewPager()
         }
         setupTabColors()
+        getPagerAdapter()?.onPageSelected(binding.viewPager.currentItem)
         getPagerAdapter()?.onResume()
     }
 
@@ -99,6 +102,7 @@ class MainActivity : SimpleActivity() {
     override fun onPause() {
         super.onPause()
         config.lastUsedViewPagerPage = binding.viewPager.currentItem
+        getPagerAdapter()?.onPause()
     }
 
     override fun onDestroy() {
@@ -219,6 +223,7 @@ class MainActivity : SimpleActivity() {
         binding.viewPager.onPageChangeListener {
             binding.mainTabsHolder.getTabAt(it)?.select()
             (binding.viewPager.adapter as ViewPagerAdapter).finishActMode()
+            getPagerAdapter()?.onPageSelected(it)
         }
 
         if (isThirdPartyIntent()) {
